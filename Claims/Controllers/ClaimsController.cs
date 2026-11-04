@@ -26,8 +26,10 @@ public class ClaimsController(IClaimsService claimsService) : ControllerBase
     }
 
     /// <summary>Files a new claim.</summary>
+    /// <response code="400">The damage cost exceeds the limit, or the date is outside the cover period.</response>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     public Task<Claim> CreateAsync(CreateClaimRequest request) => claimsService.CreateAsync(request);
 
     /// <summary>Deletes a claim.</summary>

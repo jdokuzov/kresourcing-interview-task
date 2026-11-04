@@ -2,11 +2,13 @@ using Claims.Auditing;
 using Claims.Contracts;
 using Claims.Domain;
 using Claims.Persistence;
+using Claims.Validation;
 
 namespace Claims.Services;
 
 public sealed class ClaimsService(
     IRepository<Claim> claims,
+    IValidator<CreateClaimRequest> validator,
     IAuditer auditer) : IClaimsService
 {
     public Task<IReadOnlyList<Claim>> GetAllAsync() => claims.GetAllAsync();
@@ -15,6 +17,8 @@ public sealed class ClaimsService(
 
     public async Task<Claim> CreateAsync(CreateClaimRequest request)
     {
+        await validator.ThrowIfInvalidAsync(request);
+
         var claim = new Claim
         {
             Id = Guid.NewGuid().ToString(),

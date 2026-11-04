@@ -1,6 +1,8 @@
 using Claims.Auditing;
+using Claims.Contracts;
 using Claims.Persistence;
 using Claims.Services;
+using Claims.Validation;
 using Microsoft.EntityFrameworkCore;
 using MongoDB.Driver;
 using System.Reflection;
@@ -29,6 +31,7 @@ builder.Services
     .AddJsonOptions(x =>
     {
         x.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        x.JsonSerializerOptions.Converters.Add(new UtcDateTimeConverter());
     });
 
 builder.Services.AddDbContext<AuditContext>(options =>
@@ -40,10 +43,17 @@ var mongoClient = new MongoClient(mongoContainer.GetConnectionString());
 builder.Services.AddDbContext<ClaimsContext>(options =>
     options.UseMongoDB(mongoClient, builder.Configuration["MongoDb:DatabaseName"]!));
 
+builder.Services.AddSingleton(TimeProvider.System);
+
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 builder.Services.AddScoped<IClaimsService, ClaimsService>();
 builder.Services.AddScoped<ICoversService, CoversService>();
 builder.Services.AddSingleton<IPremiumCalculator, PremiumCalculator>();
+
+builder.Services.AddScoped<IValidator<CreateClaimRequest>, CreateClaimValidator>();
+builder.Services.AddSingleton<IValidator<CreateCoverRequest>, CreateCoverValidator>();
+builder.Services.AddExceptionHandler<RequestValidationExceptionHandler>();
+builder.Services.AddProblemDetails();
 
 builder.Services.AddScoped<IAuditer, Auditer>();
 
@@ -55,6 +65,8 @@ builder.Services.AddSwaggerGen(options =>
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
+app.UseExceptionHandler();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();

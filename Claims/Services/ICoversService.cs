@@ -11,6 +11,7 @@ public interface ICoversService
     /// <returns>The cover, or <c>null</c> if it does not exist.</returns>
     Task<Cover?> GetByIdAsync(string id);
 
+    /// <exception cref="Validation.RequestValidationException">The request breaks a business rule.</exception>
     Task<Cover> CreateAsync(CreateCoverRequest request);
 
     /// <returns><c>false</c> if the cover does not exist.</returns>

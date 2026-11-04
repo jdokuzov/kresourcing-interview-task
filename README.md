@@ -20,6 +20,16 @@ A request passes through these layers, and each one only knows the layer below i
 | `Controllers` | Map HTTP to service calls and results to status codes. |
 | `Contracts` | Request models, which is why clients cannot set an id or a premium. |
 | `Services` | Use cases, and the premium formula in `PremiumCalculator`. |
+| `Validation` | Business rules. A broken rule becomes a 400 response in `RequestValidationExceptionHandler`. |
 | `Persistence` | `IRepository<T>` and the MongoDB mapping. |
 | `Domain` | `Claim` and `Cover`, free of framework dependencies. |
 | `Auditing` | Audit records. |
+
+## Decisions on unclear requirements
+
+- **Dates are UTC.** A date without an offset is read as UTC, and rules compare whole days.
+- **A cover may start today.** Only earlier days count as "in the past".
+- **"1 year" is a calendar year,** so it also works across a leap day.
+- **A claim is valid on the cover's first and last day,** whereas the last day is not charged in the premium, because the number of days is `EndDate - StartDate`.
+- **`/Covers/compute` is not validated.** It is a quote, and it returns 0 for an empty or negative period.
+- **Added rules:** `EndDate` must be after `StartDate`, `DamageCost` cannot be negative, and the cover of a claim must exist.

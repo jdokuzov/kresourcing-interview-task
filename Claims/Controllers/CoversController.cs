@@ -31,8 +31,10 @@ public class CoversController(ICoversService coversService) : ControllerBase
     }
 
     /// <summary>Creates a cover; the premium is computed by the server.</summary>
+    /// <response code="400">The start date is in the past, or the period is invalid or longer than a year.</response>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     public Task<Cover> CreateAsync(CreateCoverRequest request) => coversService.CreateAsync(request);
 
     /// <summary>Deletes a cover. Claims against it are left in place.</summary>

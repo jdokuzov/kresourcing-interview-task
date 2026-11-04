@@ -2,11 +2,13 @@ using Claims.Auditing;
 using Claims.Contracts;
 using Claims.Domain;
 using Claims.Persistence;
+using Claims.Validation;
 
 namespace Claims.Services;
 
 public sealed class CoversService(
     IRepository<Cover> covers,
+    IValidator<CreateCoverRequest> validator,
     IPremiumCalculator premiumCalculator,
     IAuditer auditer) : ICoversService
 {
@@ -16,6 +18,8 @@ public sealed class CoversService(
 
     public async Task<Cover> CreateAsync(CreateCoverRequest request)
     {
+        await validator.ThrowIfInvalidAsync(request);
+
         var cover = new Cover
         {
             Id = Guid.NewGuid().ToString(),
