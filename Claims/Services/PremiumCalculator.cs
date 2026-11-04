@@ -2,40 +2,41 @@ using Claims.Domain;
 
 namespace Claims.Services;
 
-/// <summary>Computes the premium from the vessel type and the length of the insurance period.</summary>
+/// <summary>
+/// Premium = day rate x days, where the day rate depends on the vessel type and
+/// later days of the period are discounted progressively.
+/// </summary>
 public sealed class PremiumCalculator : IPremiumCalculator
 {
+    private const decimal BaseDayRate = 1250m;
+    private const int FullPriceDays = 30;
+    private const int FirstDiscountDays = 150;
+
     public decimal Compute(DateTime startDate, DateTime endDate, CoverType coverType)
     {
-        var multiplier = 1.3m;
-        if (coverType == CoverType.Yacht)
-        {
-            multiplier = 1.1m;
-        }
+        var days = Math.Max(0, (int)Math.Ceiling((endDate - startDate).TotalDays));
 
-        if (coverType == CoverType.PassengerShip)
-        {
-            multiplier = 1.2m;
-        }
+        var fullPriceDays = Math.Min(days, FullPriceDays);
+        var firstDiscountDays = Math.Min(days - fullPriceDays, FirstDiscountDays);
+        var secondDiscountDays = days - fullPriceDays - firstDiscountDays;
 
-        if (coverType == CoverType.Tanker)
-        {
-            multiplier = 1.5m;
-        }
+        var (firstDiscount, secondDiscount) = Discounts(coverType);
+        var dayRate = BaseDayRate * RateMultiplier(coverType);
 
-        var premiumPerDay = 1250 * multiplier;
-        var insuranceLength = (endDate - startDate).TotalDays;
-        var totalPremium = 0m;
-
-        for (var i = 0; i < insuranceLength; i++)
-        {
-            if (i < 30) totalPremium += premiumPerDay;
-            if (i < 180 && coverType == CoverType.Yacht) totalPremium += premiumPerDay - premiumPerDay * 0.05m;
-            else if (i < 180) totalPremium += premiumPerDay - premiumPerDay * 0.02m;
-            if (i < 365 && coverType != CoverType.Yacht) totalPremium += premiumPerDay - premiumPerDay * 0.03m;
-            else if (i < 365) totalPremium += premiumPerDay - premiumPerDay * 0.08m;
-        }
-
-        return totalPremium;
+        return dayRate * fullPriceDays
+            + dayRate * (1 - firstDiscount) * firstDiscountDays
+            + dayRate * (1 - secondDiscount) * secondDiscountDays;
     }
+
+    private static decimal RateMultiplier(CoverType coverType) => coverType switch
+    {
+        CoverType.Yacht => 1.1m,
+        CoverType.PassengerShip => 1.2m,
+        CoverType.Tanker => 1.5m,
+        _ => 1.3m
+    };
+
+    /// <summary>The second discount is on top of the first: 5% + 3% for yachts, 2% + 1% for other types.</summary>
+    private static (decimal First, decimal Second) Discounts(CoverType coverType) =>
+        coverType == CoverType.Yacht ? (0.05m, 0.08m) : (0.02m, 0.03m);
 }

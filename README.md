@@ -37,5 +37,6 @@ The queue lives in memory, so records are lost if the process crashes, and a rec
 - **A cover may start today.** Only earlier days count as "in the past".
 - **"1 year" is a calendar year,** so it also works across a leap day.
 - **A claim is valid on the cover's first and last day,** whereas the last day is not charged in the premium, because the number of days is `EndDate - StartDate`.
+- **Discounts add up.** "Additional" is read as 5% + 3% = 8% for yachts and 2% + 1% = 3% for other types.
 - **`/Covers/compute` is not validated.** It is a quote, and it returns 0 for an empty or negative period.
 - **Added rules:** `EndDate` must be after `StartDate`, `DamageCost` cannot be negative, and the cover of a claim must exist.

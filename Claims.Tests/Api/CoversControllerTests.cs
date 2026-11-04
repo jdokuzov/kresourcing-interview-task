@@ -18,6 +18,8 @@ public class CoversControllerTests(ApiFixture api)
     {
         var cover = await api.CreateCoverAsync();
 
+        Assert.Equal(30 * 1375m, cover.Premium);
+
         var fetched = await _client.GetFromJsonAsync<Cover>($"/Covers/{cover.Id}", ApiFixture.Json, _cancellationToken);
         Assert.Equal(cover.Premium, fetched!.Premium);
         Assert.Equal(cover.StartDate, fetched.StartDate);
@@ -60,6 +62,7 @@ public class CoversControllerTests(ApiFixture api)
             _cancellationToken);
 
         response.EnsureSuccessStatusCode();
+        Assert.Equal(10 * 1875m, await response.Content.ReadFromJsonAsync<decimal>(_cancellationToken));
     }
 
     [Fact]
