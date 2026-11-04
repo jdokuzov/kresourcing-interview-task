@@ -37,7 +37,7 @@ public class ClaimsControllerTests(ApiFixture api)
         Assert.Equal(HttpStatusCode.NotFound, afterDelete.StatusCode);
 
         var audits = await api.WaitForAuditsAsync<ClaimAudit>(a => a.ClaimId == claim.Id, expectedCount: 2);
-        Assert.Equal(["POST", "DELETE"], audits.Select(a => a.HttpRequestType));
+        Assert.Equal(["POST", "DELETE"], audits.OrderBy(a => a.Created).Select(a => a.HttpRequestType));
     }
 
     // Guards against dates shifting on their way through MongoDB on servers not running in UTC.

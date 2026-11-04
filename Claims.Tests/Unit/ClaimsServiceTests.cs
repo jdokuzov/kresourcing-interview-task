@@ -23,16 +23,17 @@ public class ClaimsServiceTests
     private readonly IRepository<Claim> _claims = Substitute.For<IRepository<Claim>>();
     private readonly IValidator<CreateClaimRequest> _validator = Substitute.For<IValidator<CreateClaimRequest>>();
     private readonly IAuditer _auditer = Substitute.For<IAuditer>();
+    private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly ClaimsService _service;
 
     public ClaimsServiceTests()
     {
         _validator.ValidateAsync(Request).Returns([]);
-        _service = new ClaimsService(_claims, _validator, _auditer);
+        _service = new ClaimsService(_claims, _validator, _auditer, _unitOfWork);
     }
 
     [Fact]
-    public async Task Create_stores_and_audits_a_claim_with_a_generated_id()
+    public async Task Create_saves_the_claim_and_its_audit_together()
     {
         var claim = await _service.CreateAsync(Request);
 
@@ -42,12 +43,16 @@ public class ClaimsServiceTests
         Assert.Equal(Request.Name, claim.Name);
         Assert.Equal(Request.Type, claim.Type);
         Assert.Equal(Request.DamageCost, claim.DamageCost);
-        await _claims.Received(1).AddAsync(claim);
-        await _auditer.Received(1).AuditClaimAsync(claim.Id, "POST");
+        Received.InOrder(() =>
+        {
+            _claims.Add(claim);
+            _auditer.AuditClaim(claim.Id, "POST");
+            _unitOfWork.SaveChangesAsync();
+        });
     }
 
     [Fact]
-    public async Task Create_with_an_invalid_request_stores_and_audits_nothing()
+    public async Task Create_with_an_invalid_request_saves_nothing()
     {
         ValidationFailure[] failures = [new("DamageCost", "Too high")];
         _validator.ValidateAsync(Request).Returns(failures);
@@ -55,27 +60,33 @@ public class ClaimsServiceTests
         var exception = await Assert.ThrowsAsync<RequestValidationException>(() => _service.CreateAsync(Request));
 
         Assert.Equal(failures, exception.Failures);
-        await _claims.DidNotReceiveWithAnyArgs().AddAsync(default!);
-        await _auditer.DidNotReceiveWithAnyArgs().AuditClaimAsync(default!, default!);
+        _auditer.DidNotReceiveWithAnyArgs().AuditClaim(default!, default!);
+        await _unitOfWork.DidNotReceiveWithAnyArgs().SaveChangesAsync();
     }
 
     [Fact]
-    public async Task Delete_audits_a_deleted_claim()
+    public async Task Delete_saves_the_removal_and_its_audit_together()
     {
-        _claims.DeleteAsync("claim-1").Returns(true);
+        _claims.RemoveAsync("claim-1").Returns(true);
 
         Assert.True(await _service.DeleteAsync("claim-1"));
 
-        await _auditer.Received(1).AuditClaimAsync("claim-1", "DELETE");
+        Received.InOrder(() =>
+        {
+            _claims.RemoveAsync("claim-1");
+            _auditer.AuditClaim("claim-1", "DELETE");
+            _unitOfWork.SaveChangesAsync();
+        });
     }
 
     [Fact]
     public async Task Delete_of_an_unknown_claim_audits_nothing()
     {
-        _claims.DeleteAsync("unknown").Returns(false);
+        _claims.RemoveAsync("unknown").Returns(false);
 
         Assert.False(await _service.DeleteAsync("unknown"));
 
-        await _auditer.DidNotReceiveWithAnyArgs().AuditClaimAsync(default!, default!);
+        _auditer.DidNotReceiveWithAnyArgs().AuditClaim(default!, default!);
+        await _unitOfWork.DidNotReceiveWithAnyArgs().SaveChangesAsync();
     }
 }

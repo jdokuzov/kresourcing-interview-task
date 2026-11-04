@@ -22,17 +22,18 @@ public class CoversServiceTests
     private readonly IValidator<CreateCoverRequest> _validator = Substitute.For<IValidator<CreateCoverRequest>>();
     private readonly IPremiumCalculator _premiumCalculator = Substitute.For<IPremiumCalculator>();
     private readonly IAuditer _auditer = Substitute.For<IAuditer>();
+    private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly CoversService _service;
 
     public CoversServiceTests()
     {
         _validator.ValidateAsync(Request).Returns([]);
         _premiumCalculator.Compute(Request.StartDate, Request.EndDate, Request.Type).Returns(123m);
-        _service = new CoversService(_covers, _validator, _premiumCalculator, _auditer);
+        _service = new CoversService(_covers, _validator, _premiumCalculator, _auditer, _unitOfWork);
     }
 
     [Fact]
-    public async Task Create_stores_and_audits_a_cover_with_a_generated_id_and_computed_premium()
+    public async Task Create_saves_the_cover_with_computed_premium_and_its_audit_together()
     {
         var cover = await _service.CreateAsync(Request);
 
@@ -41,38 +42,48 @@ public class CoversServiceTests
         Assert.Equal(Request.EndDate, cover.EndDate);
         Assert.Equal(Request.Type, cover.Type);
         Assert.Equal(123m, cover.Premium);
-        await _covers.Received(1).AddAsync(cover);
-        await _auditer.Received(1).AuditCoverAsync(cover.Id, "POST");
+        Received.InOrder(() =>
+        {
+            _covers.Add(cover);
+            _auditer.AuditCover(cover.Id, "POST");
+            _unitOfWork.SaveChangesAsync();
+        });
     }
 
     [Fact]
-    public async Task Create_with_an_invalid_request_stores_and_audits_nothing()
+    public async Task Create_with_an_invalid_request_saves_nothing()
     {
         _validator.ValidateAsync(Request).Returns([new ValidationFailure("StartDate", "In the past")]);
 
         await Assert.ThrowsAsync<RequestValidationException>(() => _service.CreateAsync(Request));
 
-        await _covers.DidNotReceiveWithAnyArgs().AddAsync(default!);
-        await _auditer.DidNotReceiveWithAnyArgs().AuditCoverAsync(default!, default!);
+        _auditer.DidNotReceiveWithAnyArgs().AuditCover(default!, default!);
+        await _unitOfWork.DidNotReceiveWithAnyArgs().SaveChangesAsync();
     }
 
     [Fact]
-    public async Task Delete_audits_a_deleted_cover()
+    public async Task Delete_saves_the_removal_and_its_audit_together()
     {
-        _covers.DeleteAsync("cover-1").Returns(true);
+        _covers.RemoveAsync("cover-1").Returns(true);
 
         Assert.True(await _service.DeleteAsync("cover-1"));
 
-        await _auditer.Received(1).AuditCoverAsync("cover-1", "DELETE");
+        Received.InOrder(() =>
+        {
+            _covers.RemoveAsync("cover-1");
+            _auditer.AuditCover("cover-1", "DELETE");
+            _unitOfWork.SaveChangesAsync();
+        });
     }
 
     [Fact]
     public async Task Delete_of_an_unknown_cover_audits_nothing()
     {
-        _covers.DeleteAsync("unknown").Returns(false);
+        _covers.RemoveAsync("unknown").Returns(false);
 
         Assert.False(await _service.DeleteAsync("unknown"));
 
-        await _auditer.DidNotReceiveWithAnyArgs().AuditCoverAsync(default!, default!);
+        _auditer.DidNotReceiveWithAnyArgs().AuditCover(default!, default!);
+        await _unitOfWork.DidNotReceiveWithAnyArgs().SaveChangesAsync();
     }
 }

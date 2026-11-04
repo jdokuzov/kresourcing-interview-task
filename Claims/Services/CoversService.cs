@@ -10,7 +10,8 @@ public sealed class CoversService(
     IRepository<Cover> covers,
     IValidator<CreateCoverRequest> validator,
     IPremiumCalculator premiumCalculator,
-    IAuditer auditer) : ICoversService
+    IAuditer auditer,
+    IUnitOfWork unitOfWork) : ICoversService
 {
     public Task<IReadOnlyList<Cover>> GetAllAsync() => covers.GetAllAsync();
 
@@ -29,20 +30,22 @@ public sealed class CoversService(
             Premium = premiumCalculator.Compute(request.StartDate, request.EndDate, request.Type)
         };
 
-        await covers.AddAsync(cover);
-        await auditer.AuditCoverAsync(cover.Id, HttpMethods.Post);
+        covers.Add(cover);
+        auditer.AuditCover(cover.Id, HttpMethods.Post);
+        await unitOfWork.SaveChangesAsync();
         return cover;
     }
 
     public async Task<bool> DeleteAsync(string id)
     {
-        var deleted = await covers.DeleteAsync(id);
-        if (deleted)
+        if (!await covers.RemoveAsync(id))
         {
-            await auditer.AuditCoverAsync(id, HttpMethods.Delete);
+            return false;
         }
 
-        return deleted;
+        auditer.AuditCover(id, HttpMethods.Delete);
+        await unitOfWork.SaveChangesAsync();
+        return true;
     }
 
     public decimal ComputePremium(DateTime startDate, DateTime endDate, CoverType coverType) =>

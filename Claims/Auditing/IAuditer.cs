@@ -1,14 +1,13 @@
 namespace Claims.Auditing;
 
-/// <summary>Records which requests changed claims and covers.</summary>
+/// <summary>
+/// Records which requests changed claims and covers. Nothing is written until
+/// <see cref="Persistence.IUnitOfWork.SaveChangesAsync"/>, so the audit record is saved
+/// together with the change it describes, or not at all.
+/// </summary>
 public interface IAuditer
 {
-    /// <summary>Records a change to a claim. Completes before the record is persisted.</summary>
-    ValueTask AuditClaimAsync(string claimId, string httpRequestType);
+    void AuditClaim(string claimId, string httpRequestType);
 
-    /// <summary>Records a change to a cover. Completes before the record is persisted.</summary>
-    ValueTask AuditCoverAsync(string coverId, string httpRequestType);
+    void AuditCover(string coverId, string httpRequestType);
 }
-
-/// <summary>Marks an audit entity that can travel through the audit queue.</summary>
-public interface IAuditRecord;

@@ -1,15 +1,18 @@
+using Claims.Auditing;
 using Claims.Domain;
 using Microsoft.EntityFrameworkCore;
 using MongoDB.EntityFrameworkCore.Extensions;
 
 namespace Claims.Persistence;
 
-/// <summary>MongoDB store for claims and covers. All storage mapping lives here, keeping the domain model clean.</summary>
-public class ClaimsContext(DbContextOptions<ClaimsContext> options) : DbContext(options)
+/// <summary>MongoDB store for claims, covers and the audit outbox. All storage mapping lives here, keeping the domain model clean.</summary>
+public class ClaimsContext(DbContextOptions<ClaimsContext> options) : DbContext(options), IUnitOfWork
 {
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<AuditEvent>().ToCollection("outbox");
 
         modelBuilder.Entity<Claim>(claim =>
         {

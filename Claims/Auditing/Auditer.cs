@@ -1,25 +1,22 @@
-using System.Threading.Channels;
+using Claims.Persistence;
 
 namespace Claims.Auditing;
 
-/// <summary>
-/// Puts audit records on an in-memory queue, so requests do not wait for the audit database.
-/// <see cref="AuditWorker"/> does the actual writing.
-/// </summary>
-public sealed class Auditer(Channel<IAuditRecord> queue, TimeProvider timeProvider) : IAuditer
+/// <summary>Adds audit events to the outbox, from where <see cref="OutboxRelay"/> publishes them.</summary>
+public sealed class Auditer(IRepository<AuditEvent> outbox, TimeProvider timeProvider) : IAuditer
 {
-    public ValueTask AuditClaimAsync(string claimId, string httpRequestType) =>
-        queue.Writer.WriteAsync(new ClaimAudit
-        {
-            ClaimId = claimId,
-            HttpRequestType = httpRequestType,
-            Created = timeProvider.GetUtcNow().UtcDateTime
-        });
+    public void AuditClaim(string claimId, string httpRequestType) =>
+        Add(AuditedEntity.Claim, claimId, httpRequestType);
 
-    public ValueTask AuditCoverAsync(string coverId, string httpRequestType) =>
-        queue.Writer.WriteAsync(new CoverAudit
+    public void AuditCover(string coverId, string httpRequestType) =>
+        Add(AuditedEntity.Cover, coverId, httpRequestType);
+
+    private void Add(AuditedEntity entityType, string entityId, string httpRequestType) =>
+        outbox.Add(new AuditEvent
         {
-            CoverId = coverId,
+            Id = Guid.NewGuid().ToString(),
+            EntityType = entityType,
+            EntityId = entityId,
             HttpRequestType = httpRequestType,
             Created = timeProvider.GetUtcNow().UtcDateTime
         });

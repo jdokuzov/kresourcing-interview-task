@@ -9,7 +9,8 @@ namespace Claims.Services;
 public sealed class ClaimsService(
     IRepository<Claim> claims,
     IValidator<CreateClaimRequest> validator,
-    IAuditer auditer) : IClaimsService
+    IAuditer auditer,
+    IUnitOfWork unitOfWork) : IClaimsService
 {
     public Task<IReadOnlyList<Claim>> GetAllAsync() => claims.GetAllAsync();
 
@@ -29,19 +30,21 @@ public sealed class ClaimsService(
             DamageCost = request.DamageCost
         };
 
-        await claims.AddAsync(claim);
-        await auditer.AuditClaimAsync(claim.Id, HttpMethods.Post);
+        claims.Add(claim);
+        auditer.AuditClaim(claim.Id, HttpMethods.Post);
+        await unitOfWork.SaveChangesAsync();
         return claim;
     }
 
     public async Task<bool> DeleteAsync(string id)
     {
-        var deleted = await claims.DeleteAsync(id);
-        if (deleted)
+        if (!await claims.RemoveAsync(id))
         {
-            await auditer.AuditClaimAsync(id, HttpMethods.Delete);
+            return false;
         }
 
-        return deleted;
+        auditer.AuditClaim(id, HttpMethods.Delete);
+        await unitOfWork.SaveChangesAsync();
+        return true;
     }
 }

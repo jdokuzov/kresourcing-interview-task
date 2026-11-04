@@ -1,3 +1,4 @@
+using Azure.Messaging.ServiceBus;
 using Claims.Auditing;
 using Claims.Contracts;
 using Claims.Persistence;
@@ -8,23 +9,30 @@ using MongoDB.Driver;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
-using System.Threading.Channels;
 using Testcontainers.MongoDb;
 using Testcontainers.MsSql;
+using Testcontainers.ServiceBus;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Start Testcontainers for SQL Server and MongoDB
+// Start Testcontainers for SQL Server, MongoDB and the Service Bus emulator
 var sqlContainer = new MsSqlBuilder(RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
         ? "mcr.microsoft.com/mssql/server:2022-latest"
         : "mcr.microsoft.com/mssql/server:2019-CU18-ubuntu-20.04")
     .Build();
 
+// A replica set, because MongoDB transactions require one and the outbox relies on them.
 var mongoContainer = new MongoDbBuilder("mongo:latest")
+    .WithReplicaSet()
     .Build();
 
-await sqlContainer.StartAsync();
-await mongoContainer.StartAsync();
+const string auditQueue = "audit-events"; // Declared in servicebus-emulator.json
+var serviceBusContainer = new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
+    .WithAcceptLicenseAgreement(true)
+    .WithConfig(Path.Combine(AppContext.BaseDirectory, "servicebus-emulator.json"))
+    .Build();
+
+await Task.WhenAll(sqlContainer.StartAsync(), mongoContainer.StartAsync(), serviceBusContainer.StartAsync());
 
 // Add services to the container.
 builder.Services
@@ -47,6 +55,7 @@ builder.Services.AddDbContext<ClaimsContext>(options =>
 builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
+builder.Services.AddScoped<IUnitOfWork>(services => services.GetRequiredService<ClaimsContext>());
 builder.Services.AddScoped<IClaimsService, ClaimsService>();
 builder.Services.AddScoped<ICoversService, CoversService>();
 builder.Services.AddSingleton<IPremiumCalculator, PremiumCalculator>();
@@ -56,11 +65,13 @@ builder.Services.AddSingleton<IValidator<CreateCoverRequest>, CreateCoverValidat
 builder.Services.AddExceptionHandler<RequestValidationExceptionHandler>();
 builder.Services.AddProblemDetails();
 
-// Bounded, so a slow audit database slows requests down rather than exhausting memory.
-builder.Services.AddSingleton(Channel.CreateBounded<IAuditRecord>(
-    new BoundedChannelOptions(capacity: 10_000) { SingleReader = true }));
-builder.Services.AddSingleton<IAuditer, Auditer>();
-builder.Services.AddHostedService<AuditWorker>();
+builder.Services.AddScoped<IAuditer, Auditer>();
+builder.Services.AddScoped<AuditWriter>();
+builder.Services.AddSingleton(_ => new ServiceBusClient(serviceBusContainer.GetConnectionString()));
+builder.Services.AddSingleton(services => services.GetRequiredService<ServiceBusClient>().CreateSender(auditQueue));
+builder.Services.AddSingleton(services => services.GetRequiredService<ServiceBusClient>().CreateProcessor(auditQueue));
+builder.Services.AddHostedService<OutboxRelay>();
+builder.Services.AddHostedService<AuditConsumer>();
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();

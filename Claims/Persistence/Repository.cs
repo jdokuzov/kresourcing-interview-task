@@ -11,13 +11,9 @@ public sealed class Repository<T>(ClaimsContext context) : IRepository<T> where 
     public async Task<T?> GetByIdAsync(string id) =>
         await context.Set<T>().FindAsync(id);
 
-    public async Task AddAsync(T entity)
-    {
-        context.Set<T>().Add(entity);
-        await context.SaveChangesAsync();
-    }
+    public void Add(T entity) => context.Set<T>().Add(entity);
 
-    public async Task<bool> DeleteAsync(string id)
+    public async Task<bool> RemoveAsync(string id)
     {
         var entity = await GetByIdAsync(id);
         if (entity is null)
@@ -26,7 +22,6 @@ public sealed class Repository<T>(ClaimsContext context) : IRepository<T> where 
         }
 
         context.Set<T>().Remove(entity);
-        await context.SaveChangesAsync();
         return true;
     }
 }

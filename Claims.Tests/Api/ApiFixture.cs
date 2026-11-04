@@ -43,7 +43,7 @@ public sealed class ApiFixture : WebApplicationFactory<Program>
         for (var attempt = 0; ; attempt++)
         {
             var audits = (await context.Set<T>().AsNoTracking().ToListAsync()).Where(predicate).ToList();
-            if (audits.Count >= expectedCount || attempt == 50)
+            if (audits.Count >= expectedCount || attempt == 300)
             {
                 return audits;
             }
