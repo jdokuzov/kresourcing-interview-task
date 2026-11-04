@@ -1,27 +1,26 @@
+using System.Threading.Channels;
+
 namespace Claims.Auditing;
 
-/// <summary>Writes audit records to the audit database as part of the request.</summary>
-public sealed class Auditer(AuditContext auditContext) : IAuditer
+/// <summary>
+/// Puts audit records on an in-memory queue, so requests do not wait for the audit database.
+/// <see cref="AuditWorker"/> does the actual writing.
+/// </summary>
+public sealed class Auditer(Channel<IAuditRecord> queue, TimeProvider timeProvider) : IAuditer
 {
-    public async ValueTask AuditClaimAsync(string claimId, string httpRequestType)
-    {
-        auditContext.Add(new ClaimAudit
+    public ValueTask AuditClaimAsync(string claimId, string httpRequestType) =>
+        queue.Writer.WriteAsync(new ClaimAudit
         {
             ClaimId = claimId,
             HttpRequestType = httpRequestType,
-            Created = DateTime.UtcNow
+            Created = timeProvider.GetUtcNow().UtcDateTime
         });
-        await auditContext.SaveChangesAsync();
-    }
 
-    public async ValueTask AuditCoverAsync(string coverId, string httpRequestType)
-    {
-        auditContext.Add(new CoverAudit
+    public ValueTask AuditCoverAsync(string coverId, string httpRequestType) =>
+        queue.Writer.WriteAsync(new CoverAudit
         {
             CoverId = coverId,
             HttpRequestType = httpRequestType,
-            Created = DateTime.UtcNow
+            Created = timeProvider.GetUtcNow().UtcDateTime
         });
-        await auditContext.SaveChangesAsync();
-    }
 }

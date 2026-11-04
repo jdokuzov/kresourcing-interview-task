@@ -8,6 +8,7 @@ using MongoDB.Driver;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
+using System.Threading.Channels;
 using Testcontainers.MongoDb;
 using Testcontainers.MsSql;
 
@@ -55,7 +56,11 @@ builder.Services.AddSingleton<IValidator<CreateCoverRequest>, CreateCoverValidat
 builder.Services.AddExceptionHandler<RequestValidationExceptionHandler>();
 builder.Services.AddProblemDetails();
 
-builder.Services.AddScoped<IAuditer, Auditer>();
+// Bounded, so a slow audit database slows requests down rather than exhausting memory.
+builder.Services.AddSingleton(Channel.CreateBounded<IAuditRecord>(
+    new BoundedChannelOptions(capacity: 10_000) { SingleReader = true }));
+builder.Services.AddSingleton<IAuditer, Auditer>();
+builder.Services.AddHostedService<AuditWorker>();
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();

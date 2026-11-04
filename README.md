@@ -23,7 +23,13 @@ A request passes through these layers, and each one only knows the layer below i
 | `Validation` | Business rules. A broken rule becomes a 400 response in `RequestValidationExceptionHandler`. |
 | `Persistence` | `IRepository<T>` and the MongoDB mapping. |
 | `Domain` | `Claim` and `Cover`, free of framework dependencies. |
-| `Auditing` | Audit records. |
+| `Auditing` | Audit records, the queue and the worker that writes them. |
+
+## Auditing
+
+Requests no longer wait for the audit database. `Auditer` puts a record on a bounded in-memory `Channel`, and `AuditWorker`, a background service, writes the records to SQL Server. On shutdown the worker finishes what is queued.
+
+The queue lives in memory, so records are lost if the process crashes, and a record that fails to write is logged but not retried. Audit data that must never be lost would need a transactional outbox or a durable broker such as Azure Service Bus; only `Auditer` and `AuditWorker` would change.
 
 ## Decisions on unclear requirements
 

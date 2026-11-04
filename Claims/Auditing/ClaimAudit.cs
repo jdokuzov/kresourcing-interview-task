@@ -1,6 +1,6 @@
 namespace Claims.Auditing;
 
-public class ClaimAudit
+public class ClaimAudit : IAuditRecord
 {
     public int Id { get; set; }
 
