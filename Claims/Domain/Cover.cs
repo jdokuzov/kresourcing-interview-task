@@ -1,22 +1,18 @@
-using MongoDB.Bson.Serialization.Attributes;
+namespace Claims.Domain;
 
-namespace Claims;
-
+/// <summary>An insurance policy for a single vessel over a limited period.</summary>
 public class Cover
 {
-    [BsonId]
-    public string Id { get; set; }
+    public required string Id { get; set; }
 
-    [BsonElement("startDate")]
+    /// <summary>First day of the insurance period (UTC).</summary>
     public DateTime StartDate { get; set; }
 
-    [BsonElement("endDate")]
+    /// <summary>End of the insurance period (UTC).</summary>
     public DateTime EndDate { get; set; }
 
-    [BsonElement("claimType")]
     public CoverType Type { get; set; }
 
-    [BsonElement("premium")]
     public decimal Premium { get; set; }
 }
 

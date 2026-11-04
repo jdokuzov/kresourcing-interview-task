@@ -1,38 +1,27 @@
-﻿namespace Claims.Auditing
+namespace Claims.Auditing;
+
+/// <summary>Writes audit records to the audit database as part of the request.</summary>
+public sealed class Auditer(AuditContext auditContext) : IAuditer
 {
-    public class Auditer
+    public async ValueTask AuditClaimAsync(string claimId, string httpRequestType)
     {
-        private readonly AuditContext _auditContext;
-
-        public Auditer(AuditContext auditContext)
+        auditContext.Add(new ClaimAudit
         {
-            _auditContext = auditContext;
-        }
+            ClaimId = claimId,
+            HttpRequestType = httpRequestType,
+            Created = DateTime.UtcNow
+        });
+        await auditContext.SaveChangesAsync();
+    }
 
-        public void AuditClaim(string id, string httpRequestType)
+    public async ValueTask AuditCoverAsync(string coverId, string httpRequestType)
+    {
+        auditContext.Add(new CoverAudit
         {
-            var claimAudit = new ClaimAudit()
-            {
-                Created = DateTime.Now,
-                HttpRequestType = httpRequestType,
-                ClaimId = id
-            };
-
-            _auditContext.Add(claimAudit);
-            _auditContext.SaveChanges();
-        }
-        
-        public void AuditCover(string id, string httpRequestType)
-        {
-            var coverAudit = new CoverAudit()
-            {
-                Created = DateTime.Now,
-                HttpRequestType = httpRequestType,
-                CoverId = id
-            };
-
-            _auditContext.Add(coverAudit);
-            _auditContext.SaveChanges();
-        }
+            CoverId = coverId,
+            HttpRequestType = httpRequestType,
+            Created = DateTime.UtcNow
+        });
+        await auditContext.SaveChangesAsync();
     }
 }
