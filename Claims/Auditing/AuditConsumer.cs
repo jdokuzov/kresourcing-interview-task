@@ -12,6 +12,9 @@ public sealed class AuditConsumer(
     IServiceScopeFactory scopeFactory,
     ILogger<AuditConsumer> logger) : IHostedService
 {
+    /// <summary>Also declared in servicebus-emulator.json and infra/main.bicep.</summary>
+    public const string QueueName = "audit-events";
+
     public Task StartAsync(CancellationToken cancellationToken)
     {
         processor.ProcessMessageAsync += HandleMessageAsync;

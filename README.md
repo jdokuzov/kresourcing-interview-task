@@ -4,12 +4,32 @@ Backend for handling insurance claims. The assignment is in [docs/README.md](doc
 
 ## Running
 
-Docker must be running: SQL Server, MongoDB and the Service Bus emulator are started through Testcontainers. The first start pulls the images, which can take several minutes.
+Docker must be running: in the `Development` environment, SQL Server, MongoDB and the Service Bus emulator are started through Testcontainers. The first start pulls the images, which can take several minutes.
 
 ```
-dotnet run --project Claims      # Swagger UI at https://localhost:7052/swagger
+dotnet run --project Claims      # Swagger UI at https://localhost:7052
 dotnet test                      # unit tests and API tests
 ```
+
+## Deploying to Azure
+
+The API runs in Azure Container Apps, with Azure SQL for audit records and Service Bus for the audit queue. `infra/main.bicep` creates all of it. The application signs in to SQL, Service Bus and the container registry with a managed identity, so the only secret is the MongoDB connection string.
+
+You need the Azure CLI, a resource group, and permission to assign roles in it (Owner, for example). You also need a MongoDB deployment that supports transactions, such as a MongoDB Atlas cluster that allows connections from Azure. Then:
+
+```
+az acr create --resource-group <group> --name <registry> --sku Basic
+az acr build --registry <registry> --image claims-api:v1 .
+az deployment group create --resource-group <group> --template-file infra/main.bicep \
+  --parameters registryName=<registry> imageTag=v1 mongoConnectionString='<connection string>'
+```
+
+- **The API is private by default.** It has no authentication, so it can only be reached from inside the Container Apps environment. Add `publicIngress=true` to reach it from the internet, for a short demo for example, and add authentication before using it for anything real.
+- **Health:** `GET /health` reports whether the process is up, and does not check the databases.
+- **Scaling:** the API runs as exactly one replica. The outbox relay and audit consumer live in the same process, so it must not scale to zero, and more replicas would publish some events twice.
+- **The identity is SQL administrator,** because the application runs its migrations on startup. Separating migrations from the application would allow it fewer rights.
+- **SQL firewall:** the server accepts connections from all Azure services, still subject to Entra sign-in. Private networking would be tighter.
+- **Failed first deployment:** role assignments can take a few minutes to apply. If the container cannot pull its image or sign in, run the deployment again.
 
 ## Structure
 

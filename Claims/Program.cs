@@ -1,4 +1,6 @@
+using Azure.Identity;
 using Azure.Messaging.ServiceBus;
+using Claims;
 using Claims.Auditing;
 using Claims.Contracts;
 using Claims.Persistence;
@@ -7,32 +9,15 @@ using Claims.Validation;
 using Microsoft.EntityFrameworkCore;
 using MongoDB.Driver;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
-using Testcontainers.MongoDb;
-using Testcontainers.MsSql;
-using Testcontainers.ServiceBus;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Start Testcontainers for SQL Server, MongoDB and the Service Bus emulator
-var sqlContainer = new MsSqlBuilder(RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-        ? "mcr.microsoft.com/mssql/server:2022-latest"
-        : "mcr.microsoft.com/mssql/server:2019-CU18-ubuntu-20.04")
-    .Build();
-
-// A replica set, because MongoDB transactions require one and the outbox relies on them.
-var mongoContainer = new MongoDbBuilder("mongo:latest")
-    .WithReplicaSet()
-    .Build();
-
-const string auditQueue = "audit-events"; // Declared in servicebus-emulator.json
-var serviceBusContainer = new ServiceBusBuilder("mcr.microsoft.com/azure-messaging/servicebus-emulator:latest")
-    .WithAcceptLicenseAgreement(true)
-    .WithConfig(Path.Combine(AppContext.BaseDirectory, "servicebus-emulator.json"))
-    .Build();
-
-await Task.WhenAll(sqlContainer.StartAsync(), mongoContainer.StartAsync(), serviceBusContainer.StartAsync());
+// Local development and tests run against containers. Everywhere else, configuration comes from the host.
+if (builder.Environment.IsDevelopment())
+{
+    builder.Configuration.AddInMemoryCollection(await LocalInfrastructure.StartAsync());
+}
 
 // Add services to the container.
 builder.Services
@@ -44,11 +29,13 @@ builder.Services
     });
 
 builder.Services.AddDbContext<AuditContext>(options =>
-    options.UseSqlServer(sqlContainer.GetConnectionString()));
+    options.UseSqlServer(
+        builder.Configuration.GetRequiredSection("ConnectionStrings:AuditDatabase").Value,
+        sql => sql.EnableRetryOnFailure()));
 
 // One client for the whole application: EF builds its internal services per client instance,
 // so creating a client per DbContext makes requests fail after about 20 of them.
-var mongoClient = new MongoClient(mongoContainer.GetConnectionString());
+var mongoClient = new MongoClient(builder.Configuration.GetRequiredSection("ConnectionStrings:ClaimsDatabase").Value);
 builder.Services.AddDbContext<ClaimsContext>(options =>
     options.UseMongoDB(mongoClient, builder.Configuration["MongoDb:DatabaseName"]!));
 
@@ -67,11 +54,17 @@ builder.Services.AddProblemDetails();
 
 builder.Services.AddScoped<IAuditer, Auditer>();
 builder.Services.AddScoped<AuditWriter>();
-builder.Services.AddSingleton(_ => new ServiceBusClient(serviceBusContainer.GetConnectionString()));
-builder.Services.AddSingleton(services => services.GetRequiredService<ServiceBusClient>().CreateSender(auditQueue));
-builder.Services.AddSingleton(services => services.GetRequiredService<ServiceBusClient>().CreateProcessor(auditQueue));
+// In Azure the namespace is set and access goes through a managed identity; the emulator needs a connection string.
+var serviceBusNamespace = builder.Configuration["ServiceBus:FullyQualifiedNamespace"];
+builder.Services.AddSingleton(_ => serviceBusNamespace is null
+    ? new ServiceBusClient(builder.Configuration.GetRequiredSection("ConnectionStrings:ServiceBus").Value)
+    : new ServiceBusClient(serviceBusNamespace, new DefaultAzureCredential()));
+builder.Services.AddSingleton(services => services.GetRequiredService<ServiceBusClient>().CreateSender(AuditConsumer.QueueName));
+builder.Services.AddSingleton(services => services.GetRequiredService<ServiceBusClient>().CreateProcessor(AuditConsumer.QueueName));
 builder.Services.AddHostedService<OutboxRelay>();
 builder.Services.AddHostedService<AuditConsumer>();
+
+builder.Services.AddHealthChecks();
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -83,17 +76,21 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 app.UseExceptionHandler();
 
-if (app.Environment.IsDevelopment())
+
+app.UseSwagger();
+
+app.UseSwaggerUI(options => // UseSwaggerUI is called only in Development.
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "v1");
+    options.RoutePrefix = string.Empty;
+});
 
 app.UseHttpsRedirection();
 
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 using (var scope = app.Services.CreateScope())
 {
