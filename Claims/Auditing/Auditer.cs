@@ -1,38 +1,23 @@
-﻿namespace Claims.Auditing
+using Claims.Persistence;
+
+namespace Claims.Auditing;
+
+/// <summary>Adds audit events to the outbox, from where <see cref="OutboxRelay"/> publishes them.</summary>
+public sealed class Auditer(IRepository<AuditEvent> outbox, TimeProvider timeProvider) : IAuditer
 {
-    public class Auditer
-    {
-        private readonly AuditContext _auditContext;
+    public void AuditClaim(string claimId, string httpRequestType) =>
+        Add(AuditedEntity.Claim, claimId, httpRequestType);
 
-        public Auditer(AuditContext auditContext)
+    public void AuditCover(string coverId, string httpRequestType) =>
+        Add(AuditedEntity.Cover, coverId, httpRequestType);
+
+    private void Add(AuditedEntity entityType, string entityId, string httpRequestType) =>
+        outbox.Add(new AuditEvent
         {
-            _auditContext = auditContext;
-        }
-
-        public void AuditClaim(string id, string httpRequestType)
-        {
-            var claimAudit = new ClaimAudit()
-            {
-                Created = DateTime.Now,
-                HttpRequestType = httpRequestType,
-                ClaimId = id
-            };
-
-            _auditContext.Add(claimAudit);
-            _auditContext.SaveChanges();
-        }
-        
-        public void AuditCover(string id, string httpRequestType)
-        {
-            var coverAudit = new CoverAudit()
-            {
-                Created = DateTime.Now,
-                HttpRequestType = httpRequestType,
-                CoverId = id
-            };
-
-            _auditContext.Add(coverAudit);
-            _auditContext.SaveChanges();
-        }
-    }
+            Id = Guid.NewGuid().ToString(),
+            EntityType = entityType,
+            EntityId = entityId,
+            HttpRequestType = httpRequestType,
+            Created = timeProvider.GetUtcNow().UtcDateTime
+        });
 }
